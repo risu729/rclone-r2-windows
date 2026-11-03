@@ -1,0 +1,20 @@
+# Credentials, encrypted configs, recovery material and local runtime state
+*.conf
+*.conf.*
+*.dpapi
+*.pid
+*.log
+*.log.*
+*.zip
+.env
+.env.*
+settings.json
+cache/
+pending-*
+*-recovery*
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
