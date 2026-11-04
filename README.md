@@ -118,9 +118,49 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -STA -File .\R2Drive.ps1
 
 標準のrclone cryptを使うため、同じ設定を対応クライアントに引き継げばR2内のファイルを再アップロードせず使えます。復旧用の暗号化設定には追加saltも含まれます。パスフレーズだけでなく、設定も保管してください。
 
-Androidでは[RSAF](https://github.com/chenxiaolong/RSAF)などが候補です。Androidでの実機動作はこのリポジトリの検証範囲に含みません。`unlock.dpapi` は別端末への移行用ファイルではありません。
+Androidで同じファイルを使う手順は、以下の「Android：RSAFの導入と設定」を参照してください。`unlock.dpapi` は別端末への移行用ファイルではありません。
 
 復旧用設定だけでは、アカウントID・バケット名・ドライブ文字などを含むこのスクリプトの `settings.json` は復元されません。別のPCでこのスクリプトを継続する場合は、スクリプトと `settings.json` も保管してください。
+
+## Android：RSAFの導入と設定
+
+[RSAF](https://github.com/chenxiaolong/RSAF)は、rcloneの保存先をAndroidのファイル選択画面に追加する無料OSSアプリです。同じcrypt設定をインポートすることで、PCと同じ暗号化済みファイルをアップロード・ダウンロードできます。以下は公式資料・ソースに基づく手順で、Android実機での動作確認はこのリポジトリの検証範囲に含みません。
+
+### インストールと設定のインポート
+
+1. [公式リリース](https://github.com/chenxiaolong/RSAF/releases/latest)から、端末に合う `.apk` をダウンロードしてインストールします。**Pixel 9aは `arm64-v8a`** を選びます。2026-11-05時点の最新版は [v4.16](https://github.com/chenxiaolong/RSAF/releases/tag/v4.16)で、対象ファイルは `RSAF-4.16-arm64-v8a-release.apk` です。`.apk.sig` は署名検証用で、インストールするアプリではありません。
+2. Windowsの設定時に出力した、暗号化済みの `r2drive-recovery.conf` をAndroidから選べる場所に用意します。実際の設定ファイルには認証情報・暗号化鍵の材料が含まれるため、公開リンクやこのリポジトリへ置かないでください。
+3. RSAFの **Import configuration** で、その復旧用設定ファイルを選びます。パスワードを求められたら、Windowsの初回設定で決めた暗号化パスフレーズを入力します。新しいパスフレーズやsaltでcryptを作り直す必要はありません。
+4. インポート後に `r2` と `r2raw` が表示されます。普段のファイル操作には **`r2`** を使います。`r2raw` はR2への接続を担当する下層の設定なので削除しないでください。`r2raw` へ直接アップロードすると、cryptによる暗号化がかかりません。
+5. `r2` の **Allow external app access** が有効であることを確認します。アップロードをバックグラウンドで続けられるよう、RSAFの通知を許可し、必要に応じてAndroidの電池設定でRSAFのバックグラウンド動作を制限しないようにします。
+
+RSAFはファイル管理アプリそのものではありません。`r2` の **Open remote** を選ぶと、Android標準のファイル画面（DocumentsUI）で開けます。そこから端末のファイルを `r2` へコピーするとアップロード、`r2` から端末のDownloadなどへコピーするとダウンロードになります。コピー操作後もRSAFのバックグラウンド転送が完了するまで待ってください。
+
+Files by Googleの画面内でUSBのように直接操作する方法は確認できていません。ファイル管理アプリ内の保存先として追加したい場合は、[Material Files](https://github.com/zhanghai/MaterialFiles)の **Add storage → External storage → r2 → このフォルダを使用** がRSAFの[対応アプリWiki](https://github.com/chenxiaolong/RSAF/wiki/Apps-that-work-well-with-RSAF)で案内されています。
+
+### キャッシュ容量と一覧表示の調整
+
+RSAFで **`r2` → Custom VFS options** を開き、既存の設定を残して以下を追加します。同じ項目がすでにある場合は、その行の値を置き換えてください。1行に1項目、ハイフンではなくアンダースコアを使います。
+
+```ini
+vfs_cache_max_size=1G
+dir_cache_time=5m
+no_modtime=true
+```
+
+| 設定 | 効果と注意点 |
+|---|---|
+| `vfs_cache_max_size=1G` | ファイルキャッシュを約1GiBを目安に整理します。RSAFの初期設定では容量上限はありません。開いているファイル・未送信のデータ・整理の間隔によって超えるため、空き容量の消費を厳密に1GiB以内へ制限する設定ではありません。 |
+| `dir_cache_time=5m` | 取得済みのファイル一覧を5分間保持し、同じフォルダを再び開く際の再取得を減らします。RSAFの初期値は5秒です。初回・RSAFのプロセス再起動後・キャッシュ失効後は読み込みが必要で、別端末からの追加・削除の反映は遅れる場合があります。 |
+| `no_modtime=true` | 更新日時の読み書きを省きます。R2のようなS3互換ストレージで、一覧表示時のファイルごとの日時取得を減らせる場合があります。更新日時の表示・日時順の並び替え・Androidから保存する際の元の更新日時の保持に影響します。**日時を重視する場合は、この行を追加しないでください。** |
+
+転送が終わり、ファイルを閉じてから **Save and reload** で反映します。これらは一覧の遅さを改善するために試す設定で、初回読み込みをなくしたり、速度改善を保証したりするものではありません。元に戻す場合は追加した行を削除して保存・再読み込みします。
+
+この設定はRSAFで直接開くリモートごとに適用されます。普段 `r2` 経由で使うなら、`r2raw` 側にも同じVFS設定を追加する必要はありません。また、Windows側の2GBというキャッシュ指定は起動オプションなので、復旧用 `.conf` のインポートだけではAndroidへ引き継がれません。
+
+キャッシュは端末内に**読める状態**で残る場合があります。アップロード待ちのファイルを失わないよう、転送中にRSAFのアプリデータやキャッシュをAndroidの設定から消去しないでください。
+
+設定の根拠：[RSAFの初期値・リモート別VFS設定](https://github.com/chenxiaolong/RSAF/blob/master/rcbridge/rcbridge.go)、[一覧表示が遅い場合の開発者回答（Issue #225）](https://github.com/chenxiaolong/RSAF/issues/225#issuecomment-3850181674)、[rcloneのファイルキャッシュ仕様](https://rclone.org/commands/rclone_mount/#vfs-file-caching)、[S3の更新日時取得と高速化](https://rclone.org/s3/#modification-times-and-hashes)。
 
 ## 動作確認
 
